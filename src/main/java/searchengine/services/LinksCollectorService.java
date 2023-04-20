@@ -6,10 +6,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import searchengine.model.PageEntity;
-import searchengine.model.PageRepository;
-import searchengine.model.SiteEntity;
-import searchengine.model.SiteRepository;
+import searchengine.model.*;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -21,7 +18,6 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
     public static Set<String> linksSet = new TreeSet<>();
     private final String url;
     private final PageRepository pageRepository;
-    //    private final SiteEntity siteEntity;
     private final SiteRepository siteRepository;
 
     private final String siteUrl;
@@ -52,29 +48,26 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
 
             Connection.Response response = Jsoup.connect(urlNext).execute();
             int responseCode = response.statusCode();
-
             PageEntity pageEntity = new PageEntity();
-
-//          =======
             SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
             siteEntity.setStatusTime(LocalDateTime.now());
+            String status = String.valueOf(siteEntity.getStatus());
             siteRepository.save(siteEntity);
-//          =======
-
-            document = Jsoup.connect(urlNext).get();
-            pageEntity.setSiteId(siteEntity);
-            pageEntity.setPath(urlNext);
-            pageEntity.setCode(responseCode);
-            pageEntity.setContent(String.valueOf(document));
-            Elements elements = document.select("a[href]");
-            for (Element element : elements) {
-                String link = element.absUrl("href");
-                if (checkURL(link) && setLinkToStaticSet(link)) {
-                    tempSet.add(link);
+            if(!status.equals("FAILED")) {
+                document = Jsoup.connect(urlNext).get();
+                pageEntity.setSiteId(siteEntity);
+                pageEntity.setPath(urlNext);
+                pageEntity.setCode(responseCode);
+                pageEntity.setContent(String.valueOf(document));
+                Elements elements = document.select("a[href]");
+                for (Element element : elements) {
+                    String link = element.absUrl("href");
+                    if (checkURL(link) && setLinkToStaticSet(link)) {
+                        tempSet.add(link);
+                    }
                 }
+                pageRepository.save(pageEntity);
             }
-            pageRepository.save(pageEntity);
-
         } catch (IOException | InterruptedException e) {
             return tempSet;
         }

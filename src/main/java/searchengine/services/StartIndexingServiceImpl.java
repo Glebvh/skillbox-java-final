@@ -26,30 +26,19 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         HashMap<String, Object> response = new HashMap<>();
         List<Site> sitesList = sites.getSites();
         for (Site site : sitesList) {
-
-
             String siteUrl = site.getUrl();
             String siteName = site.getName();
             if (!isIndexing(siteUrl)) {
                 siteRepository.deleteByUrl(siteUrl);
-
                 response = siteAdd(siteUrl, siteName);
                 if (response.size() == 0) {
-
-                    Thread thread = new Thread(() -> {
-                        pageAdd(siteUrl);
-                    });
+                    Thread thread = new Thread(() -> pageAdd(siteUrl));
                     thread.start();
-
-                    response.put("result", true);
-                    changeStatus(siteUrl, SiteStatus.INDEXED, null);
                 }
             } else {
                 response.put("result", false);
                 response.put("error", "Индексация " + siteName + " уже запущена");
             }
-
-
         }
         return response;
     }
@@ -84,19 +73,22 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         return response;
     }
 
-    public void changeStatus(String siteUrl, SiteStatus status, String lastError) {
-        SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
-        siteEntity.setStatus(status);
-        siteEntity.setLastError(lastError);
-        siteEntity.setStatusTime(LocalDateTime.now());
-        siteRepository.save(siteEntity);
-    }
-
-    public void pageAdd(String siteUrl) {
-//        SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
+    public HashMap<String, Object> pageAdd(String siteUrl) {
+        HashMap<String, Object> response = new HashMap<>();
         Set<String> finalList = new ForkJoinPool()
                 .invoke(new LinksCollectorService(siteUrl, pageRepository, siteRepository, siteUrl));
-
         LinksCollectorService.linksSet = new HashSet<>();
+        SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
+        if(siteEntity.getStatus().toString().equals("FAILED")
+                && siteEntity.getLastError().equals("Индексация остановлена пользователем")) {
+            response.put("result", true);
+        } else if (siteEntity.getStatus().toString().equals("FAILED")) {
+            response.put("result", false);
+            response.put("error", siteEntity.getName() + " - " + siteEntity.getLastError());
+        } else {
+            siteEntity.setStatus(SiteStatus.INDEXED);
+            response.put("result", true);
+        }
+        return response;
     }
 }
