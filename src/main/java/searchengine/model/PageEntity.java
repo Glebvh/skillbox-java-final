@@ -8,7 +8,7 @@ import javax.persistence.*;
 @Getter
 @Setter
 @Entity
-@Table(name = "pages")
+@Table(name = "pages", indexes = @Index(columnList = "path", name = "path_index"))
 public class PageEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
