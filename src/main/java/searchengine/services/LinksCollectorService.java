@@ -7,6 +7,8 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 import searchengine.model.*;
+import searchengine.repositories.PageRepository;
+import searchengine.repositories.SiteRepository;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -19,28 +21,30 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
     private final String url;
     private final PageRepository pageRepository;
     private final SiteRepository siteRepository;
-
     private final String siteUrl;
 
 
     @Override
     protected Set<String> compute() {
-        List<LinksCollectorService> tasks = new ArrayList<>();
-
-        setLinkToStaticSet(url);
-
-        Set<String> tempSet = getLinksSet(url);
-        for (String link : tempSet) {
-            LinksCollectorService task = new LinksCollectorService(link, pageRepository, siteRepository, siteUrl);
-            task.fork();
-            tasks.add(task);
+        SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
+        siteEntity.setStatusTime(LocalDateTime.now());
+        String status = String.valueOf(siteEntity.getStatus());
+        siteRepository.save(siteEntity);
+        if (!status.equals("FAILED")) {
+            List<LinksCollectorService> tasks = new ArrayList<>();
+            setLinkToStaticSet(url);
+            Set<String> tempSet = getLinksSet(url, siteEntity);
+            for (String link : tempSet) {
+                LinksCollectorService task = new LinksCollectorService(link, pageRepository, siteRepository, siteUrl);
+                task.fork();
+                tasks.add(task);
+            }
+            tasks.forEach(LinksCollectorService::join);
         }
-        tasks.forEach(LinksCollectorService::join);
-
         return linksSet;
     }
 
-    public Set<String> getLinksSet(String urlNext) {
+    public Set<String> getLinksSet(String urlNext, SiteEntity siteEntity) {
         Set<String> tempSet = new TreeSet<>();
         Document document;
         try {
@@ -48,26 +52,22 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
 
             Connection.Response response = Jsoup.connect(urlNext).execute();
             int responseCode = response.statusCode();
+
             PageEntity pageEntity = new PageEntity();
-            SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
-            siteEntity.setStatusTime(LocalDateTime.now());
-            String status = String.valueOf(siteEntity.getStatus());
-            siteRepository.save(siteEntity);
-            if(!status.equals("FAILED")) {
-                document = Jsoup.connect(urlNext).get();
-                pageEntity.setSiteId(siteEntity);
-                pageEntity.setPath(urlNext);
-                pageEntity.setCode(responseCode);
-                pageEntity.setContent(String.valueOf(document));
-                Elements elements = document.select("a[href]");
-                for (Element element : elements) {
-                    String link = element.absUrl("href");
-                    if (checkURL(link) && setLinkToStaticSet(link)) {
-                        tempSet.add(link);
-                    }
+
+            document = Jsoup.connect(urlNext).get();
+            pageEntity.setSiteId(siteEntity);
+            pageEntity.setPath(urlNext);
+            pageEntity.setCode(responseCode);
+            pageEntity.setContent(String.valueOf(document));
+            Elements elements = document.select("a[href]");
+            for (Element element : elements) {
+                String link = element.absUrl("href");
+                if (checkURL(link) && setLinkToStaticSet(link)) {
+                    tempSet.add(link);
                 }
-                pageRepository.save(pageEntity);
             }
+            pageRepository.save(pageEntity);
         } catch (IOException | InterruptedException e) {
             return tempSet;
         }

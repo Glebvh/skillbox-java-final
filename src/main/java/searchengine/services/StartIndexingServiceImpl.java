@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import searchengine.config.Site;
 import searchengine.config.SitesList;
 import searchengine.model.*;
+import searchengine.repositories.PageRepository;
+import searchengine.repositories.SiteRepository;
 
 import java.io.IOException;
 import java.time.LocalDateTime;
@@ -32,8 +34,11 @@ public class StartIndexingServiceImpl implements StartIndexingService {
                 siteRepository.deleteByUrl(siteUrl);
                 response = siteAdd(siteUrl, siteName);
                 if (response.size() == 0) {
-                    Thread thread = new Thread(() -> pageAdd(siteUrl));
-                    thread.start();
+//                    Thread thread = new Thread(() -> {
+                       response =
+                               pageAdd(siteUrl);
+//                    });
+//                    thread.start();
                 }
             } else {
                 response.put("result", false);
@@ -60,7 +65,6 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         Connection.Response connectionResponse;
         try {
             connectionResponse = Jsoup.connect(siteUrl).execute();
-//            int responseCode = connectionResponse.statusCode();
             siteEntity.setStatus(SiteStatus.INDEXING);
         } catch (IOException e) {
             siteEntity.setStatus(SiteStatus.FAILED);
@@ -68,7 +72,6 @@ public class StartIndexingServiceImpl implements StartIndexingService {
             response.put("result", false);
             response.put("error", siteName + " - " + e);
         }
-
         siteRepository.save(siteEntity);
         return response;
     }
@@ -77,18 +80,22 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         HashMap<String, Object> response = new HashMap<>();
         Set<String> finalList = new ForkJoinPool()
                 .invoke(new LinksCollectorService(siteUrl, pageRepository, siteRepository, siteUrl));
-        LinksCollectorService.linksSet = new HashSet<>();
+
         SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
+
         if(siteEntity.getStatus().toString().equals("FAILED")
                 && siteEntity.getLastError().equals("Индексация остановлена пользователем")) {
-            response.put("result", true);
+            response.put("result", "true failed add");
         } else if (siteEntity.getStatus().toString().equals("FAILED")) {
             response.put("result", false);
             response.put("error", siteEntity.getName() + " - " + siteEntity.getLastError());
         } else {
             siteEntity.setStatus(SiteStatus.INDEXED);
-            response.put("result", true);
+            siteRepository.save(siteEntity);
+            response.put("result", "true indexed add");
         }
+
+        LinksCollectorService.linksSet = new HashSet<>();
         return response;
     }
 }
