@@ -37,6 +37,6 @@ public class ApiController {
 
     @GetMapping("/stopIndexing")
     public ResponseEntity<HashMap<String,Object>> stopIndexing() {
-        return ResponseEntity.ok(stopIndexingService.stop());
+         return ResponseEntity.ok(stopIndexingService.stop());
     }
 }

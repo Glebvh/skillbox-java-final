@@ -29,7 +29,7 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
         SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
         siteEntity.setStatusTime(LocalDateTime.now());
         String status = String.valueOf(siteEntity.getStatus());
-        siteRepository.save(siteEntity);
+        siteRepository.saveAndFlush(siteEntity);
         if (!status.equals("FAILED")) {
             List<LinksCollectorService> tasks = new ArrayList<>();
             setLinkToStaticSet(url);
@@ -53,9 +53,9 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
             Connection.Response response = Jsoup.connect(urlNext).execute();
             int responseCode = response.statusCode();
 
-            PageEntity pageEntity = new PageEntity();
-
             document = Jsoup.connect(urlNext).get();
+
+            PageEntity pageEntity = new PageEntity();
             pageEntity.setSiteId(siteEntity);
             pageEntity.setPath(urlNext);
             pageEntity.setCode(responseCode);
@@ -71,6 +71,7 @@ public class LinksCollectorService extends RecursiveTask<Set<String>> {
         } catch (IOException | InterruptedException e) {
             return tempSet;
         }
+
         return tempSet;
     }
 

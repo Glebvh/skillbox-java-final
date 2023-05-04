@@ -32,14 +32,12 @@ public class StartIndexingServiceImpl implements StartIndexingService {
             String siteName = site.getName();
             if (!isIndexing(siteUrl)) {
                 siteRepository.deleteByUrl(siteUrl);
-                response = siteAdd(siteUrl, siteName);
-                if (response.size() == 0) {
-//                    Thread thread = new Thread(() -> {
-                       response =
-                               pageAdd(siteUrl);
-//                    });
-//                    thread.start();
-                }
+                siteAdd(siteUrl, siteName);
+                Thread thread = new Thread(() -> {
+                    pageAdd(siteUrl);
+                });
+                thread.start();
+                response.put("result", true);
             } else {
                 response.put("result", false);
                 response.put("error", "Индексация " + siteName + " уже запущена");
@@ -56,8 +54,7 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         return false;
     }
 
-    public HashMap<String, Object> siteAdd(String siteUrl, String siteName) {
-        HashMap<String, Object> response = new HashMap<>();
+    public void siteAdd(String siteUrl, String siteName) {
         SiteEntity siteEntity = new SiteEntity();
         siteEntity.setStatusTime(LocalDateTime.now());
         siteEntity.setUrl(siteUrl);
@@ -65,37 +62,49 @@ public class StartIndexingServiceImpl implements StartIndexingService {
         Connection.Response connectionResponse;
         try {
             connectionResponse = Jsoup.connect(siteUrl).execute();
-            siteEntity.setStatus(SiteStatus.INDEXING);
+            int statusCode = connectionResponse.statusCode();
+            if (statusCode == 200) {
+                siteEntity.setStatus(SiteStatus.INDEXING);
+                siteRepository.saveAndFlush(siteEntity);
+            } else {
+                exceptionChoice(statusCode, siteRepository, siteEntity);
+            }
         } catch (IOException e) {
             siteEntity.setStatus(SiteStatus.FAILED);
-            siteEntity.setLastError(e.toString());  //TODO сделать описание ошибки c номером
-            response.put("result", false);
-            response.put("error", siteName + " - " + e);
+            siteEntity.setLastError(e.toString());
+            siteRepository.saveAndFlush(siteEntity);
+            throw new IndexingException("Ошибка"); //Какой номер?
         }
-        siteRepository.save(siteEntity);
-        return response;
     }
 
-    public HashMap<String, Object> pageAdd(String siteUrl) {
-        HashMap<String, Object> response = new HashMap<>();
+    public void exceptionChoice(int statusCode, SiteRepository siteRepository, SiteEntity siteEntity) {
+        siteEntity.setStatus(SiteStatus.FAILED);
+        String msg = null;
+        if (statusCode == 400) {
+            msg = "Ошибка запроса";
+        } else if (statusCode == 401) {
+            msg = "Ошибка авторизации";
+        } else if (statusCode == 403) {
+            msg = "Ошибка доступа";
+        } else if (statusCode == 404) {
+            msg = "Страница не найдена";
+        }
+        siteEntity.setLastError(msg);
+        siteRepository.saveAndFlush(siteEntity);
+        throw new IndexingException(msg);
+    }
+
+    public void pageAdd(String siteUrl) {
         Set<String> finalList = new ForkJoinPool()
                 .invoke(new LinksCollectorService(siteUrl, pageRepository, siteRepository, siteUrl));
 
         SiteEntity siteEntity = siteRepository.findByUrl(siteUrl);
 
-        if(siteEntity.getStatus().toString().equals("FAILED")
-                && siteEntity.getLastError().equals("Индексация остановлена пользователем")) {
-            response.put("result", "true failed add");
-        } else if (siteEntity.getStatus().toString().equals("FAILED")) {
-            response.put("result", false);
-            response.put("error", siteEntity.getName() + " - " + siteEntity.getLastError());
-        } else {
+        if (!siteEntity.getStatus().toString().equals("FAILED")) {
             siteEntity.setStatus(SiteStatus.INDEXED);
             siteRepository.save(siteEntity);
-            response.put("result", "true indexed add");
         }
 
         LinksCollectorService.linksSet = new HashSet<>();
-        return response;
     }
 }
